@@ -1,4 +1,7 @@
+import ipaddress
 import re
+
+from helper import check_ip
 
 
 class Signature:
@@ -18,6 +21,16 @@ class Signature:
 
     @staticmethod
     def parse_options(options_str):
+        """
+        Parse the options string of a signature rule.
+
+        Args:
+            options_str (str): The options string to parse.
+
+        Returns:
+            dict: A dictionary containing the parsed options.
+        """
+
         # Initialize option dictionary
         options = {}
 
@@ -26,20 +39,33 @@ class Signature:
 
         # Parse each option
         for item in options_list:
+
             if not item.strip():
                 continue
+
             key_value = item.split(":", 1)
             key = key_value[0].strip()
             value = key_value[1].strip("'") if len(key_value) > 1 else None
+
             if key not in Signature.COMMON_LOCATION_KEYS:
                 options[key] = value
-            else :
+            else:
                 options["location"] = key
 
         return options
 
     @staticmethod
     def parse_rule(rule_str: str):
+        """
+          Parse a signature rule string into a Signature object.
+
+          Args:
+              rule_str (str): The signature rule string to parse.
+
+          Returns:
+              Signature: A Signature object representing the parsed rule.
+          """
+
         # Split the rule string into parts
         parts = rule_str.split(" ")
 
@@ -73,19 +99,15 @@ class Signature:
         if not isinstance(other, Signature):
             return False
 
-        # check if any is present in either source or destination ip
-        if 'any' in [self.source_ip, self.destination_ip, other.source_ip, other.destination_ip]:
-            ip_equal = True
-        else:
-            ip_equal = self.source_ip == other.source_ip and self.destination_ip == other.destination_ip
+        # check for protocols
+        # basically not going to the rest of the checks
+        if not self.protocol == other.protocol:
+            return False
 
-        # Check if 'any' is present in either source or destination port
-        if 'any' in [self.source_port, self.destination_port, other.source_port, other.destination_port]:
-            port_equal = True
-        else:
-            port_equal = self.source_port == other.source_port and self.destination_port == other.destination_port
+        if not self.source_port == other.source_port and self.destination_port == other.destination_port:
+            return False
 
-        return ip_equal and port_equal
+        return check_ip(self.source_ip, other.source_ip) and check_ip(self.destination_ip, other.destination_ip)
 
     def __str__(self):
         return f"Signature(action='{self.action}', protocol='{self.protocol}', source_ip='{self.source_ip}', " \
@@ -99,28 +121,6 @@ class Signature:
 
 
 if __name__ == "__main__":
-    # Example usage
-    # # Define two signature rules
-    # signature_rule1 = 'alert http any any -> any any (msg:"SQL Injection Attempt in HTTP Request Body"; content:"'"; http_client_body; pcre:"'(?:[?&;]|$)/U"; sid:1000002;)'
-    # signature_rule2 = 'alert http any any -> any any (msg:"XSS Attempt in HTTP Request Body"; http_client_body; pcre:"/(<|%3C)(script|%73%63%72%69%70%74)/i"; sid:1000002;)'
-    # signature_rule3 = 'alert http any any -> any any (msg:"XSS Attempt in HTML Content-Type"; content:"text/html"; http_header_content_type; http_header; pcre:"/(<|%3C)(script|%73%63%72%69%70%74)/i"; sid:1000004;)'
-    #
-    # # Parse the signature rules
-    # signature1 = Signature.parse_rule(signature_rule1)
-    # signature2 = Signature.parse_rule(signature_rule2)
-    # signature3 = Signature.parse_rule(signature_rule3)
-    #
-    # # Print the signatures
-    # print("Signature 1:", signature1)
-    # print("Signature 2:", signature2)
-    # print("Signature 3:", signature3)
-    #
-    # # Check if signatures are equal
-    # if signature1 == signature2 and signature1 == signature3:
-    #     print("Signatures are equal.")
-    # else:
-    #     print("Signatures are not equal.")
-
     # Read signature rules from file
     with open("test.rules", "r") as file:
         signature_rules = file.readlines()
@@ -130,4 +130,3 @@ if __name__ == "__main__":
         print(f"Rule ==> {rule}")
         signature = Signature.parse_rule(rule.strip())
         print(f"Signature ==> {signature} \n")
-

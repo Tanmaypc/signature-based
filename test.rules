@@ -26,3 +26,4 @@ alert smtp any any -> any any (msg:"SMTP HELO Command with Suspicious Domain"; c
 alert smtp any any -> any any (msg:"Suspicious SMTP Subject Line"; content:"Subject:"; pcre:"/Subject:\s+.{20,}/"; sid:1000004;)
 alert smtp any any -> any any (msg:"SMTP Command Injection Attempt in MAIL FROM"; content:"MAIL FROM:"; pcre:"/MAIL\s+FROM:\s+\S*[%@!#\|\/\$\&\*\(\)\[\]\{\}<>~:\s]/i"; sid:1000005;)
 alert smtp any any -> any any (msg:"SMTP Command Injection Attempt in DATA"; content:"DATA"; pcre:"/DATA\s+[^\r\n]*[%@!#\|\/\$\&\*\(\)\[\]\{\}<>~:\s]/i"; sid:1000006;)
+alert smtp 192.98.25.54-192.99.0.0 45 -> 192.98.25.54-192.99.0.0 45 (msg:"SMTP Command Injection Attempt in DATA"; content:"DATA"; pcre:"/DATA\s+[^\r\n]*[%@!#\|\/\$\&\*\(\)\[\]\{\}<>~:\s]/i"; sid:1000007;)
