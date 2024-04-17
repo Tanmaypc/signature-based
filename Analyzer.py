@@ -28,7 +28,7 @@ class Analyzer(Process):
         Check if a packet matches any intrusion rule.
 
         Args:
-            packet (Ether): Ethernet packet to analyze.
+            packet (Ether):  packet to analyze.
             packet_index (int): Index of the packet.
 
         Returns:

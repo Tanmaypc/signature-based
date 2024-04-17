@@ -1,80 +1,64 @@
-from scapy.layers.inet import IP, ICMP, TCP
-from scapy.layers.l2 import Ether
-
-from helper import switch_directions, equality_check
+import re
 
 
 class Signature:
     """
     Represents a network traffic signature or rule.
     """
+    COMMON_LOCATION_KEYS = ["uri_raw", "http_header_content_type", "http_header", "http_client_body"]
 
-    def __init__(self, obj):
-        """
-        Initialize a Signature object.
+    def __init__(self, action, protocol, source_ip, destination_ip, source_port, destination_port, options):
+        self.action = action
+        self.protocol = protocol
+        self.source_ip = source_ip
+        self.destination_ip = destination_ip
+        self.source_port = source_port
+        self.destination_port = destination_port
+        self.options = options
 
-        Args:
-            obj: An Ethernet packet (Ether object) or a string representation of a signature.
-        """
-        if isinstance(obj, Ether):
-            # Initialize from Ethernet packet
-            direction = '->'
-            s_id = '-1'
-            if IP in obj:
-                try:
-                    proto = obj[2].name
-                    src_ip = str(obj[1].src)
-                    src_port = str(obj[1].sport)
-                    dst_ip = str(obj[1].dst)
-                    dst_port = str(obj[1].dport)
-                    payload = '*'
-                except (AttributeError, IndexError):
-                    raise ValueError("Invalid Ethernet packet format")
-            else:
-                raise ValueError("Ethernet packet does not contain IP layer")
-        elif isinstance(obj, str):
-            # Initialize from string representation
-            string = obj.split(' ')
-            if len(string) == 5:
-                s_id = ''
-                proto = string[0]
-                src_ip, src_port = string[1].split(':')
-                direction = string[2]
-                dst_ip, dst_port = string[3].split(':')
-                payload = string[4]
-            elif len(string) == 6:
-                s_id = string[0].split(':')[0]
-                proto = string[1]
-                src_ip, src_port = string[2].split(':')
-                direction = string[3]
-                dst_ip, dst_port = string[4].split(':')
-                payload = string[5]
-            else:
-                raise ValueError("Invalid string representation format")
-        else:
-            raise ValueError("Invalid object type")
+    @staticmethod
+    def parse_options(options_str):
+        # Initialize option dictionary
+        options = {}
 
-        # Set object attributes
-        self.s_id = s_id
-        self.proto = proto
-        self.src_ip = src_ip
-        self.src_port = src_port
-        self.dir = direction
-        self.dst_ip = dst_ip
-        self.dst_port = dst_port
-        self.payload = payload
+        # Split options string by semicolons outside of quotes
+        options_list = re.split(r';(?=(?:[^"]*"[^"]*")*[^"]*$)', options_str)
 
-    def __str__(self):
-        """
-        Return a string representation of the Signature object.
-        """
-        return f"{self.proto} {self.src_ip}:{self.src_port} {self.dir} {self.dst_ip}:{self.dst_port} {self.payload}"
+        # Parse each option
+        for item in options_list:
+            if not item.strip():
+                continue
+            key_value = item.split(":", 1)
+            key = key_value[0].strip()
+            value = key_value[1].strip("'") if len(key_value) > 1 else None
+            if key not in Signature.COMMON_LOCATION_KEYS:
+                options[key] = value
+            else :
+                options["location"] = key
 
-    def __repr__(self):
-        """
-        Return a representation of the Signature object.
-        """
-        return f"rule {self.s_id}: {self.__str__()}"
+        return options
+
+    @staticmethod
+    def parse_rule(rule_str: str):
+        # Split the rule string into parts
+        parts = rule_str.split(" ")
+
+        # Extract action and protocol
+        action = parts[0]
+        protocol = parts[1]
+
+        # Extract source and destination IPs and ports
+        source_ip, source_port = parts[2:4]
+        direction = parts[4]
+        destination_ip, destination_port = parts[5:7]
+
+        # Extract options
+        options_start, options_end = rule_str.index("(") + 1, rule_str.rindex(")")
+        options_str = rule_str[options_start:options_end]
+        # Initialize option dictionary
+        options = Signature.parse_options(options_str)
+
+        return Signature(action, protocol, source_ip, destination_ip, source_port, destination_port, options)
 
     def __eq__(self, other):
         """
@@ -86,51 +70,64 @@ class Signature:
         Returns:
             bool: True if the objects are equal, False otherwise.
         """
-        if isinstance(self, other.__class__):
-            if other.dir == '<>':
-                dir_a, dir_b = switch_directions(other)
-                return self.__eq__(dir_a) or self.__eq__(dir_b)
-
-            # Check equality for each attribute
-            if other.proto != 'any' and equality_check(other.proto, self.proto):
-                return False
-            if other.src_ip != 'any' and equality_check(other.src_ip, self.src_ip):
-                return False
-            if other.src_port != 'any' and equality_check(other.src_port, self.src_port, False):
-                return False
-            if other.dst_ip != 'any' and equality_check(other.dst_ip, self.dst_ip):
-                return False
-            if other.dst_port != 'any' and equality_check(other.dst_port, self.dst_port, False):
-                return False
-            if other.payload != 'any' and self.payload != other.payload:
-                return False
-            return True
-        else:
+        if not isinstance(other, Signature):
             return False
+
+        # check if any is present in either source or destination ip
+        if 'any' in [self.source_ip, self.destination_ip, other.source_ip, other.destination_ip]:
+            ip_equal = True
+        else:
+            ip_equal = self.source_ip == other.source_ip and self.destination_ip == other.destination_ip
+
+        # Check if 'any' is present in either source or destination port
+        if 'any' in [self.source_port, self.destination_port, other.source_port, other.destination_port]:
+            port_equal = True
+        else:
+            port_equal = self.source_port == other.source_port and self.destination_port == other.destination_port
+
+        return ip_equal and port_equal
+
+    def __str__(self):
+        return f"Signature(action='{self.action}', protocol='{self.protocol}', source_ip='{self.source_ip}', " \
+               f"destination_ip='{self.destination_ip}', source_port='{self.source_port}', " \
+               f"destination_port='{self.destination_port}', options={self.options})"
+
+    def __repr__(self):
+        return f"Signature(action='{self.action}', protocol='{self.protocol}', source_ip='{self.source_ip}', " \
+               f"destination_ip='{self.destination_ip}', source_port='{self.source_port}', " \
+               f"destination_port='{self.destination_port}', options={self.options})"
 
 
 if __name__ == "__main__":
-    # Define an Ethernet packet
+    # Example usage
+    # # Define two signature rules
+    # signature_rule1 = 'alert http any any -> any any (msg:"SQL Injection Attempt in HTTP Request Body"; content:"'"; http_client_body; pcre:"'(?:[?&;]|$)/U"; sid:1000002;)'
+    # signature_rule2 = 'alert http any any -> any any (msg:"XSS Attempt in HTTP Request Body"; http_client_body; pcre:"/(<|%3C)(script|%73%63%72%69%70%74)/i"; sid:1000002;)'
+    # signature_rule3 = 'alert http any any -> any any (msg:"XSS Attempt in HTML Content-Type"; content:"text/html"; http_header_content_type; http_header; pcre:"/(<|%3C)(script|%73%63%72%69%70%74)/i"; sid:1000004;)'
+    #
+    # # Parse the signature rules
+    # signature1 = Signature.parse_rule(signature_rule1)
+    # signature2 = Signature.parse_rule(signature_rule2)
+    # signature3 = Signature.parse_rule(signature_rule3)
+    #
+    # # Print the signatures
+    # print("Signature 1:", signature1)
+    # print("Signature 2:", signature2)
+    # print("Signature 3:", signature3)
+    #
+    # # Check if signatures are equal
+    # if signature1 == signature2 and signature1 == signature3:
+    #     print("Signatures are equal.")
+    # else:
+    #     print("Signatures are not equal.")
 
-    # Define an Ethernet packet with TCP
-    eth_packet = Ether(src="00:11:22:33:44:55", dst="66:77:88:99:AA:BB") / IP(src="192.168.1.1", dst="8.8.8.8") / TCP(
-        sport=12345, dport=80)
+    # Read signature rules from file
+    with open("test.rules", "r") as file:
+        signature_rules = file.readlines()
 
-    # Create a Signature object from the Ethernet packet
-    signature_from_packet = Signature(eth_packet)
-    print("Signature from packet:", signature_from_packet)
+    # Parse each signature rule and print the Signature object
+    for rule in signature_rules:
+        print(f"Rule ==> {rule}")
+        signature = Signature.parse_rule(rule.strip())
+        print(f"Signature ==> {signature} \n")
 
-    # Define a string representation of a signature
-    signature_str = "TCP 192.168.1.2:8080 -> 10.0.0.1:80 *"
-
-    # Create a Signature object from the string representation
-    signature_from_str = Signature(signature_str)
-    print("Signature from string:", signature_from_str)
-
-    # Compare two Signature objects for equality
-    signature1 = Signature("UDP 192.168.1.1:any -> 8.8.8.8:53 *")
-    signature2 = Signature("UDP 192.168.1.1:any -> 8.8.8.8:53 *")
-    signature3 = Signature("UDP 192.168.1.1:any -> 8.8.8.8:80 *")
-
-    print("Equality check 1:", signature1 == signature_from_packet)  # Output: True (signatures are equivalent)
-    print("Equality check 2:", signature1 == signature3)  # Output: False (signatures are not equivalent)
