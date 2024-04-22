@@ -1,6 +1,6 @@
 import ipaddress
 import re
-
+import binascii
 from helper import check_ip
 
 
@@ -108,6 +108,26 @@ class Signature:
             return False
 
         return check_ip(self.source_ip, other.source_ip) and check_ip(self.destination_ip, other.destination_ip)
+    
+        if 'payload' in other.options:
+                other_payload = binascii.unhexlify(other.options['payload']).decode('utf-8')
+        else:
+            other_payload = ''
+         # Check if the payload contains the specified character
+        if 'content' in self.options:
+            content = self.options['content']
+            if content not in other.options.get('payload', ''):
+                return False
+
+        # Check if the PCRE pattern matches any part of the packet
+        if 'pcre' in self.options:
+            pcre_pattern = self.options['pcre']
+            if 'payload' in other.options:
+                if not re.search(pcre_pattern, other.options['payload']):
+                    return False
+
+        # If all conditions are met, the signatures are equal
+        return True
 
     def __str__(self):
         return f"Signature(action='{self.action}', protocol='{self.protocol}', source_ip='{self.source_ip}', " \
